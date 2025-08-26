@@ -1,0 +1,29 @@
+<div class="col">
+    <div class="card book-card h-100">
+        <a href="{{ book.url }}" target="_blank">
+            <img src="{{ book.cover_url }}" class="card-img-top" alt="{{ book.bookName }}">
+        </a>
+        <div class="card-body p-2">
+            <h6 class="card-title small mb-1">
+                <a href="{{ book.url }}" target="_blank" class="text-decoration-none text-dark">
+                    {{ book.bookName }}
+                </a>
+            </h6>
+            <p class="card-text small mb-1">
+                <strong>★</strong>
+                {% if book.score %}
+                    {{ book.score }}
+                {% else %}
+                    Не оценено
+                {% endif %}
+                | <strong>Гл:</strong>
+                {% if book.chapters %}
+                    {{ book.chapters }}
+                {% else %}
+                    Не указано
+                {% endif %}
+            </p>
+            <p class="small text-muted">{{ book.cluster_label }}</p>
+        </div>
+    </div>
+</div>
