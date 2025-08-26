@@ -1,3 +1,9 @@
 /config/secrets.py.py
 /books_clustered_named.csv
 /db.sqlite3
+/config/__pycache__
+/webnovel/__pycache__
+/webnovel/management/__pycache__
+/webnovel/__pycache__
+/webnovel/management/commands/__pycache__
+/webnovel/migrations/__pycache__
