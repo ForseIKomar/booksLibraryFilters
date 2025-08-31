@@ -1,0 +1,305 @@
+
+<!DOCTYPE html>
+{% load static %}
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+
+    <title>Webnovel Browser</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <!-- CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="{% static 'css/main.css' %}">
+    <!-- JS -->
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+
+    <style>
+        body { padding: 20px; }
+        .book-card img { border-radius: 10px; }
+        .sticky-sidebar {
+            position: sticky;
+            top: 20px;
+        }
+    </style>
+</head>
+<body>
+<div class="container-fluid">
+    <div class="row">
+        <!-- Контент -->
+        <div class="col-10">
+            <div class="row row-cols-2 row-cols-sm-3 row-cols-md-4 row-cols-lg-6 row-cols-xl-8 g-3" id="books-container">
+                {% for book in books %}
+                    <div class="col">
+                        <div class="card book-card h-100">
+                            <a href="{{ book.url }}" target="_blank">
+                                <img src="{{ book.cover_url }}" class="card-img-top" referrerpolicy="no-referrer" alt="{{ book.bookName }}">
+                            </a>
+                            <div class="card-body p-2">
+                                <h6 class="card-title small mb-1">
+                                    <a href="{{ book.url }}" target="_blank" class="text-decoration-none text-dark">
+                                        {{ book.bookName }}
+                                    </a>
+                                </h6>
+                                <p class="card-text small mb-1">
+                                    {{ book.site }}
+                                </p>
+                                <p class="card-text small mb-1">
+                                    <strong>★</strong> {{ book.score }} | <strong>Гл:</strong> {{ book.free }} / {{ book.chapters }}
+                                </p>
+                                <p class="small text-muted text-truncate-3" title="{{ book.description }}">
+                                  {{ book.description }}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+            <div class="text-center mt-3">
+                <button id="load-more" class="btn btn-primary">Загрузить ещё</button>
+            </div>
+        </div>
+
+        <!-- Фильтры -->
+        <div class="col-2">
+            <div class="sticky-sidebar" style="max-height: 95vh; overflow-y: auto;">
+                <h5>Фильтры</h5>
+                <form id="filters">
+                    <div class="mb-1">
+                <!-- Теги -->
+                <div class="d-flex gap-3 mb-2">
+                  <div class="d-flex flex-column">
+                    <label for="tag-select" class="form-label mb-1">Теги:</label>
+                    <select name="tag" class="form-select" multiple id="tag-select" style="width:200px;">
+                      {% for tag in tags %}
+                        <option value="{{ tag.name }}">{{ tag.name }} ({{ tag.book_count }})</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+
+                  <div class="d-flex flex-column">
+                    <label for="exclude_tag" class="form-label mb-1">Исключить:</label>
+                    <select name="exclude_tag" class="form-select" multiple id="exclude_tag" style="width:200px;">
+                      {% for tag in tags %}
+                        <option value="{{ tag.name }}">{{ tag.name }} ({{ tag.book_count }})</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                </div>
+
+                <!-- Жанры -->
+                <div class="d-flex gap-3 mb-2">
+                  <div class="d-flex flex-column">
+                    <label for="genre-select" class="form-label mb-1">Жанры:</label>
+                    <select name="genre" class="form-select" multiple id="genre-select" style="width:200px;">
+                      {% for genre in genres %}
+                        <option value="{{ genre.name }}">{{ genre.name }} ({{ genre.book_count }})</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+
+                  <div class="d-flex flex-column">
+                    <label for="exclude_genre" class="form-label mb-1">Исключить:</label>
+                    <select name="exclude_genre" class="form-select" multiple id="exclude_genre" style="width:200px;">
+                      {% for genre in genres %}
+                        <option value="{{ genre.name }}">{{ genre.name }} ({{ genre.book_count }})</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                </div>
+
+                <!-- Фэндомы -->
+                <div class="d-flex gap-3 mb-2">
+                  <div class="d-flex flex-column">
+                    <label for="fandom-select" class="form-label mb-1">Фэндомы:</label>
+                    <select name="fandom" class="form-select" multiple id="fandom-select" style="width:200px;">
+                      {% for fandom in fandoms %}
+                        <option value="{{ fandom.name }}">{{ fandom.name }} ({{ fandom.book_count }})</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+
+                  <div class="d-flex flex-column">
+                    <label for="exclude_fandom" class="form-label mb-1">Исключить:</label>
+                    <select name="exclude_fandom" class="form-select" multiple id="exclude_fandom" style="width:200px;">
+                      {% for fandom in fandoms %}
+                        <option value="{{ fandom.name }}">{{ fandom.name }} ({{ fandom.book_count }})</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                </div>
+
+                <div class="d-flex gap-3 mb-2">
+                  <div class="d-flex flex-column">
+                    <label for="site-select" class="form-label mb-1">Сайты:</label>
+                    <select name="site" class="form-select" multiple id="site-select" style="width:200px;">
+                      {% for site in sites %}
+                        <option value="{{ site.name }}">{{ site.name }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                </div>
+
+
+                    <div class="mb-1">
+                    <label>Название содержит:</label>
+                        <input type="text" name="title" class="form-control" placeholder="Введите часть названия">
+                    </div>
+                    <div class="d-flex gap-3 mb-2">
+                      <div class="d-flex flex-column">
+                        <label for="min_chapters" class="form-label mb-1">Создана от:</label>
+                        <input type="date" id="created_from" name="created_from" class="form-control" style="width:120px;">
+                      </div>
+                      <div class="d-flex flex-column">
+                        <label for="max_chapters" class="form-label mb-1">Создана до:</label>
+                        <input type="date" id="created_to" name="created_to" class="form-control" style="width:120px;">
+                      </div>
+                    </div>
+                    <div class="d-flex gap-3 mb-2">
+                      <div class="d-flex flex-column">
+                        <label for="min_chapters" class="form-label mb-1">Мин. главы:</label>
+                        <input type="number" id="min_chapters" name="min_chapters" class="form-control" style="width:120px;">
+                      </div>
+                      <div class="d-flex flex-column">
+                        <label for="max_chapters" class="form-label mb-1">Макс. главы:</label>
+                        <input type="number" id="max_chapters" name="max_chapters" class="form-control" style="width:120px;">
+                      </div>
+                    </div>
+                    <div class="d-flex gap-3 mb-2">
+                      <div class="d-flex flex-column">
+                        <label for="min_chapters" class="form-label mb-1">Мин. рейтинг:</label>
+                        <input type="number" id="min_rating" name="min_rating" class="form-control" placeholder="4,0" style="width:120px;">
+                      </div>
+                      <div class="d-flex flex-column">
+                        <label for="max_chapters" class="form-label mb-1">Макс. рейтинг:</label>
+                        <input type="number" id="max_rating" name="max_rating" class="form-control" placeholder="5,0" style="width:120px;">
+                      </div>
+                    </div>
+                    <hr>
+                    <h6>Сортировка</h6>
+                    <div class="mb-1">
+                        <label>Поле:</label>
+                        <select name="sort_by" class="form-select">
+                            <option value="bookName">Название</option>
+                            <option value="chapters">Главы</option>
+                            <option value="score">Рейтинг</option>
+                            <option value="weighted_score">Взвеш. рейтинг</option>
+                            <option value="created_at">Создано</option>
+                            <option value="updated_at">Обновлено</option>
+                            <option value="freshness_score">Новизна</option>
+                        </select>
+                    </div>
+                    <div class="mb-1">
+                        <label>Направление:</label>
+                        <select name="sort_dir" class="form-select">
+                            <option value="desc">По убыванию</option>
+                            <option value="asc">По возрастанию</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-outline-primary w-100">Применить</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let page = {{ page_number }};
+    let totalPages = {{ total_pages }};
+
+    function getFilters() {
+        const params = new URLSearchParams();
+        $("#filters").serializeArray().forEach(item => {
+            if (item.value) params.append(item.name, item.value);
+        });
+        return params.toString();
+    }
+
+    $("#filters").on("submit", function(e) {
+        e.preventDefault();
+        page = 1;
+        $.get("?", getFilters(), function(data) {
+            $("#books-container").html("");
+            for (let book of data.books) {
+                $("#books-container").append(renderBook(book));
+            }
+        });
+    });
+
+    $("#load-more").on("click", function() {
+        if (page >= totalPages) return;
+        page++;
+        $.get("?", getFilters() + "&page=" + page, function(data) {
+            for (let book of data.books) {
+                $("#books-container").append(renderBook(book));
+            }
+        });
+    });
+
+    function renderBook(book) {
+        return `
+            <div class="col">
+                <div class="card book-card h-100">
+                    <a href="${book.url}" target="_blank">
+                        <img src="${book.cover_url}" referrerpolicy="no-referrer" class="card-img-top" alt="${book.bookName}">
+                    </a>
+                    <div class="card-body p-2">
+                        <h6 class="card-title small mb-1">
+                            <a href="${book.url}" target="_blank" class="text-decoration-none text-dark">
+                                ${book.bookName}
+                            </a>
+                        </h6>
+                        <p class="card-text small mb-1">
+                            ${ book.site }
+                        </p>
+                        <p class="card-text small mb-1">
+                            <strong>★</strong> ${book.score} | <strong>Гл:</strong> ${ book.free } / ${ book.chapters }
+                        </p>
+                        <p class="small text-muted text-truncate-3" title="${book.description}">
+                          ${ book.description }
+                        </p>
+                    </div>
+                </div>
+            </div>`;
+    }
+
+    $(document).ready(function() {
+        $('#genre-select').select2({
+            placeholder: "Выберите кластеры",
+            allowClear: true,
+            width: '100%'
+        });
+        $('#fandom-select').select2({
+            placeholder: "Выберите кластеры",
+            allowClear: true,
+            width: '100%'
+        });
+        $('#tag-select').select2({
+            placeholder: "Выберите теги",
+            allowClear: true,
+            width: '100%'
+        });
+        $('#site-select').select2({
+            placeholder: "Выберите сайты",
+            allowClear: true,
+            width: '100%'
+        });
+        $('#exclude_genre').select2({
+            placeholder: "Уберите кластеры",
+            allowClear: true,
+            width: '100%'
+        });
+        $('#exclude_tag').select2({
+            placeholder: "Уберите теги",
+            allowClear: true,
+            width: '100%'
+        });
+        $('#exclude_fandom').select2({
+            placeholder: "Уберите теги",
+            allowClear: true,
+            width: '100%'
+        });
+    });
+</script>
+</body>
+</html>

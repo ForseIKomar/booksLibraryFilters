@@ -169,7 +169,7 @@ def filter_books(request):
     clusters = Cluster.objects.annotate(book_count=Count('books')).filter(book_count__gt=0).order_by('-book_count')
 
     # Передаем теги и кластеры в контекст шаблона
-    return render(request, "webnovel/index.html", {
+    return render(request, "novels/index.html", {
         "books": page_obj,
         "tags": tags,  # Теги с количеством книг
         "clusters": clusters,  # Кластеры с количеством книг
