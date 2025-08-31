@@ -7,3 +7,7 @@
 /webnovel/__pycache__
 /webnovel/management/commands/__pycache__
 /webnovel/migrations/__pycache__
+/novels/__pycache__
+/novels/management/commands/__pycache__
+/novels/management/__pycache__
+/novels/migrations/__pycache__

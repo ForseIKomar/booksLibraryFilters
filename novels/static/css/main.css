@@ -1,0 +1,12 @@
+.text-truncate-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;    /* количество строк */
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: normal;
+}
+
+.card-img-top {
+  height: 320px;
+}

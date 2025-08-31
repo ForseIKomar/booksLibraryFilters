@@ -35,6 +35,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     'webnovel',
+    'novels'
 ]
 
 MIDDLEWARE = [
@@ -75,9 +76,18 @@ DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
         "NAME": BASE_DIR / "db.sqlite3",
+    },
+    "pgsql": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": "appdb",
+        "USER": "app",
+        "PASSWORD": "pass",
+        "HOST": "127.0.0.1",  # или имя контейнера/сервера
+        "PORT": "15432",
+        "CONN_MAX_AGE": 60,   # держим соединение (сек) для производительности
+        "OPTIONS": {"options": "-c search_path=public"},  # опционально
     }
 }
-
 
 # Password validation
 # https://docs.djangoproject.com/en/4.1/ref/settings/#auth-password-validators
