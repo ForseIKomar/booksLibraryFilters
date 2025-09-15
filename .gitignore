@@ -11,3 +11,5 @@
 /novels/management/commands/__pycache__
 /novels/management/__pycache__
 /novels/migrations/__pycache__
+/.venv/
+/.idea/
