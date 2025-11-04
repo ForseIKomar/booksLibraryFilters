@@ -1,178 +1,98 @@
-from webnovel.models import Book, Tag, Cluster, Log2
 from django.shortcuts import render
-from django.core.paginator import Paginator
 from django.http import JsonResponse
-from django.db.models import Q, F, ExpressionWrapper
-from django.db.models import FloatField
-from django.db.models import Count  # Правильный импорт
-import math
-from django.db.models import DateTimeField, ExpressionWrapper, F, FloatField, DurationField
+from novels.utils.pg_utils import build_book_filter_sql, fetch_books_and_stats, PAGE_SIZE, create_book_action, \
+    get_books_action_stats
 from django.utils.timezone import now
+from django.utils.timezone import localtime, make_aware, is_naive
 
 def filter_books(request):
-    tags = request.GET.getlist("tag")
-    clusters = request.GET.getlist("cluster")
-    min_chapters = request.GET.get("min_chapters")
-    max_chapters = request.GET.get("max_chapters")
-    min_rating = request.GET.get("min_rating")
-    max_rating = request.GET.get("max_rating")
-    sort_by = request.GET.get("sort_by", "")
-    sort_dir = request.GET.get("sort_dir", "desc")
-    page = int(request.GET.get("page", 1))
-    exclude_tags = request.GET.getlist("exclude_tag")
-    exclude_clusters = request.GET.getlist("exclude_cluster")
-    title_query = request.GET.get("title", "")
-    created_from = request.GET.get("created_from")
-    created_to = request.GET.get("created_to")
-    updated_from = request.GET.get("updated_from")
-    updated_to = request.GET.get("updated_to")
-
-    # Получаем все книги
-    books = Book.objects.all()
-
-    is_chinese = request.GET.get("is_chinese")
-
-    if is_chinese == "yes":
-        books = books.filter(is_chinese=True)
-    elif is_chinese == "no":
-        books = books.filter(is_chinese=False)
-
-    # Исключить теги
-    if exclude_tags:
-        for tag in exclude_tags:
-            books = books.exclude(tags__name__iexact=tag)
-
-    # Исключить кластеры
-    if exclude_clusters:
-        for cl in exclude_clusters:
-            books = books.exclude(cluster__label__icontains=cl)
-
-    # Фильтрация по тегам
-    if tags:
-        for tag in tags:
-            books = books.filter(tags__name__iexact=tag)
-
-    # Фильтрация по кластерам
-    if clusters:
-        q = Q()
-        for cl in clusters:
-            q |= Q(cluster__label__icontains=cl)
-        books = books.filter(q)
-
-    # Фильтрация по количеству глав
-    if min_chapters:
-        books = books.filter(chapters__gte=int(min_chapters))
-
-    if max_chapters:
-        books = books.filter(chapters__lte=int(max_chapters))
-
-    # Фильтрация по рейтингу
-    if min_rating:
-        books = books.filter(score__gte=float(min_rating.replace(",", ".")))
-
-    if max_rating:
-        books = books.filter(score__lte=float(max_rating.replace(",", ".")))
-
-    if title_query:
-        books = books.filter(book_name__icontains=title_query)
-
-    if created_from:
-        books = books.filter(created_at__gte=created_from)
-
-    if created_to:
-        books = books.filter(created_at__lte=created_to)
-
-    if updated_from:
-        books = books.filter(updated_at__gte=updated_from)
-
-    if updated_to:
-        books = books.filter(updated_at__lte=updated_to)
-
-    # Добавляем взвешенный рейтинг в аннотацию
-    books = books.annotate(
-        weighted_score=ExpressionWrapper(
-            F("score") * Log2(F("chapters") + 1),
-            output_field=FloatField()
-        )
-    )
-    # Дополнительно: разницы во времени
-    books = books.annotate(
-        weighted_score=ExpressionWrapper(
-            F("score") * Log2(F("chapters") + 1),
-            output_field=FloatField()
-        ),
-        age_days=ExpressionWrapper(
-            now() - F("created_at"),
-            output_field=DurationField()
-        ),
-        updated_days=ExpressionWrapper(
-            now() - F("updated_at"),
-            output_field=DurationField()
-        )
-    )
-
-    # Весовая формула: чем новее и свежее, тем лучше (меньше дней = выше вес)
-    books = books.annotate(
-        freshness_score=ExpressionWrapper(
-            F("weighted_score") / (
-                    F("age_days") / 86400 + 1
-            ) * 1.5 +
-            1 / (F("updated_days") / 86400 + 1),
-            output_field=FloatField()
-        )
-    )
-
-    # Сортировка
-    allowed_sort_fields = {
-        "chapters": "chapters",
-        "bookName": "book_name",
-        "score": "score",
-        "weighted_score": "weighted_score",
-        "created_at": "created_at",
-        "updated_at": "updated_at",
-        "freshness_score": "freshness_score"
+    # --- входные параметры ---
+    filters = {
+        "tags": request.GET.getlist("tag"),
+        "exclude_tags": request.GET.getlist("exclude_tag"),
+        "genres": request.GET.getlist("genre"),
+        "exclude_genres": request.GET.getlist("exclude_genre"),
+        "fandoms": request.GET.getlist("fandom"),
+        "exclude_fandoms": request.GET.getlist("exclude_fandom"),
+        "site": request.GET.getlist("site"),
+        "title_query": request.GET.get("title", ""),
+        "min_rating": request.GET.get("min_rating"),
+        "max_rating": request.GET.get("max_rating"),
+        "min_chapters": request.GET.get("min_chapters"),
+        "max_chapters": request.GET.get("max_chapters"),
+        "created_from": request.GET.get("created_from"),
+        "created_to": request.GET.get("created_to"),
+        "updated_from": request.GET.get("updated_from"),
+        "updated_to": request.GET.get("updated_to"),
     }
 
-    if sort_by in allowed_sort_fields:
-        field_name = allowed_sort_fields[sort_by]
-        if sort_dir == "desc":
-            field_name = "-" + field_name
-        books = books.order_by(field_name)
+    sort_map = {
+        "chapters": "b.free_chapters",
+        "bookName": 'b."name"',
+        "score": "b.score",
+        "weighted_score": "weighted_score",
+        "created_at": "b.created_at",
+        "updated_at": "b.updated_at",
+        "freshness_score": "freshness_score",
+    }
+    sort_by = sort_map.get(request.GET.get("sort_by", ""), "freshness_score")
+    sort_dir = "DESC" if request.GET.get("sort_dir", "desc").lower() == "desc" else "ASC"
+    page = int(request.GET.get("page", 1))
 
-    # Пагинация
-    paginator = Paginator(books, 100)
-    page_obj = paginator.get_page(page)
+    # --- сбор SQL и выполнение ---
+    count_sql, data_sql, params, params_with_limit = build_book_filter_sql(filters, sort_by, sort_dir, page)
+    rows, total_pages, tags_stat, genres_stat, fandoms_stat, sites_stats = fetch_books_and_stats(
+        count_sql, data_sql, params, params_with_limit
+    )
 
-    # Формируем данные для отображения в шаблоне
+    # --- Получаем статистику по действиям (просмотр, клик)
+    book_ids = [r["book_id"] for r in rows]
+    action_stats = get_books_action_stats(book_ids)
+
     books_data = []
-    for book in page_obj:
+    for r in rows:
+        book_id = r["book_id"]
+        stats = action_stats.get(book_id, {})
         books_data.append({
-            "bookId": book.book_id,
-            "bookName": book.book_name,
-            "authorName": book.author_name,
-            "url": book.url,
-            "score": str(book.score).replace(".", ","),
-            "chapters": book.chapters,
-            "coverUrl": f"https://book-pic.webnovel.com/bookcover/{book.book_id}?imageMogr2/thumbnail/600x",
-            "tags": [tag.name for tag in book.tags.all()],  # Предположим, что у книги есть связь с тегами
-            "clusterLabel": [cluster.label for cluster in book.cluster.all()],  # Если кластер есть
+            "bookId": book_id,
+            "bookName": r["book_name"],
+            "description": r["description"],
+            "site": r["site"],
+            "authorName": r["author_name"],
+            "url": r["url"],
+            "cover_url": r["picture_url"],
+            "score": str(r["score"]).replace(".", ",") if r["score"] is not None else None,
+            "free": r["free"],
+            "chapters": r["chapters"],
+            "tags": r.get("tags", []) or [],
+            "genres": r.get("genres", []) or [],
+            "fandoms": r.get("fandoms", []) or [],
+            "weighted_score": r.get("weighted_score"),
+            "freshness_score": r.get("freshness_score"),
+            "last_view": localtime(stats.get("view")).strftime("%Y-%m-%d %H:%M") if stats.get("view") else None,
+            "last_click": localtime(stats.get("click")).strftime("%Y-%m-%d %H:%M") if stats.get("click") else None,
         })
 
-    # Ответ для Ajax запроса
     if request.headers.get("x-requested-with") == "XMLHttpRequest":
-        return JsonResponse({"books": books_data, "total_pages": paginator.num_pages}, safe=False)
+        return JsonResponse({"books": books_data, "total_pages": total_pages}, safe=False)
 
-    # Сортируем теги по количеству книг в убывающем порядке
-    tags = Tag.objects.annotate(book_count=Count('books')).order_by('-book_count')
-
-    # Сортируем кластеры по количеству книг в убывающем порядке, исключая кластеры с 0 книгами
-    clusters = Cluster.objects.annotate(book_count=Count('books')).filter(book_count__gt=0).order_by('-book_count')
-
-    # Передаем теги и кластеры в контекст шаблона
     return render(request, "novels/index.html", {
-        "books": page_obj,
-        "tags": tags,  # Теги с количеством книг
-        "clusters": clusters,  # Кластеры с количеством книг
+        "books": books_data,
+        "tags": tags_stat,
+        "genres": genres_stat,
+        "fandoms": fandoms_stat,
+        "sites": sites_stats,
         "page_number": page,
-        "total_pages": paginator.num_pages,
+        "total_pages": total_pages,
     })
+
+
+def view_book(request, book_id):
+    create_book_action(book_id, "view")
+    return JsonResponse({"status": "ok", "action": "view", "book_id": book_id})
+
+
+def click_book(request, book_id):
+    create_book_action(book_id, "click")
+    return JsonResponse({"status": "ok", "action": "click", "book_id": book_id})
+

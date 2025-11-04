@@ -1,5 +1,5 @@
 <div class="col">
-    <div class="card book-card h-100">
+    <div class="card book-card h-100" data-book-id="{{book.bookId}}">
         <a href="{{ book.url }}" target="_blank">
             <img src="{{ book.cover_url }}" class="card-img-top" referrerpolicy="no-referrer" alt="{{ book.bookName }}">
         </a>
@@ -27,8 +27,20 @@
                 {% endif %}
             </p>
             <p class="small text-muted text-truncate-3" title="{{ book.description }}">
-              {{ book.description }}
+                {{ book.description }}
             </p>
+
+            <!-- 👇 Новый блок статистики -->
+            {% if book.last_view or book.last_click %}
+            <p class="small text-muted mt-1 mb-0" style="font-size: 0.75rem;">
+                {% if book.last_view %}
+                    👁️ Просмотр: {{ book.last_view }}
+                {% endif %}
+                {% if book.last_click %}
+                    <br>🖱️ Клик: {{ book.last_click }}
+                {% endif %}
+            </p>
+            {% endif %}
         </div>
     </div>
 </div>

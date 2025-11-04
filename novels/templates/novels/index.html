@@ -11,6 +11,7 @@
     <!-- CSS -->
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
     <link rel="stylesheet" href="{% static 'css/main.css' %}">
+
     <!-- JS -->
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 
@@ -31,7 +32,7 @@
             <div class="row row-cols-2 row-cols-sm-3 row-cols-md-4 row-cols-lg-6 row-cols-xl-8 g-3" id="books-container">
                 {% for book in books %}
                     <div class="col">
-                        <div class="card book-card h-100">
+                        <div class="card book-card h-100" data-book-id="{{book.bookId}}">
                             <a href="{{ book.url }}" target="_blank">
                                 <img src="{{ book.cover_url }}" class="card-img-top" referrerpolicy="no-referrer" alt="{{ book.bookName }}">
                             </a>
@@ -50,6 +51,18 @@
                                 <p class="small text-muted text-truncate-3" title="{{ book.description }}">
                                   {{ book.description }}
                                 </p>
+
+                                <!-- 👇 Новый блок статистики -->
+                                {% if book.last_view or book.last_click %}
+                                <p class="small text-muted mt-1 mb-0" style="font-size: 0.75rem;">
+                                    {% if book.last_view %}
+                                        👁️ Просмотр: {{ book.last_view }}
+                                    {% endif %}
+                                    {% if book.last_click %}
+                                        <br>🖱️ Клик: {{ book.last_click }}
+                                    {% endif %}
+                                </p>
+                                {% endif %}
                             </div>
                         </div>
                     </div>
@@ -203,103 +216,7 @@
     </div>
 </div>
 
-<script>
-    let page = {{ page_number }};
-    let totalPages = {{ total_pages }};
+<script src="{% static 'js/app.js' %}"></script>
 
-    function getFilters() {
-        const params = new URLSearchParams();
-        $("#filters").serializeArray().forEach(item => {
-            if (item.value) params.append(item.name, item.value);
-        });
-        return params.toString();
-    }
-
-    $("#filters").on("submit", function(e) {
-        e.preventDefault();
-        page = 1;
-        $.get("?", getFilters(), function(data) {
-            $("#books-container").html("");
-            for (let book of data.books) {
-                $("#books-container").append(renderBook(book));
-            }
-        });
-    });
-
-    $("#load-more").on("click", function() {
-        if (page >= totalPages) return;
-        page++;
-        $.get("?", getFilters() + "&page=" + page, function(data) {
-            for (let book of data.books) {
-                $("#books-container").append(renderBook(book));
-            }
-        });
-    });
-
-    function renderBook(book) {
-        return `
-            <div class="col">
-                <div class="card book-card h-100">
-                    <a href="${book.url}" target="_blank">
-                        <img src="${book.cover_url}" referrerpolicy="no-referrer" class="card-img-top" alt="${book.bookName}">
-                    </a>
-                    <div class="card-body p-2">
-                        <h6 class="card-title small mb-1">
-                            <a href="${book.url}" target="_blank" class="text-decoration-none text-dark">
-                                ${book.bookName}
-                            </a>
-                        </h6>
-                        <p class="card-text small mb-1">
-                            ${ book.site }
-                        </p>
-                        <p class="card-text small mb-1">
-                            <strong>★</strong> ${book.score} | <strong>Гл:</strong> ${ book.free } / ${ book.chapters }
-                        </p>
-                        <p class="small text-muted text-truncate-3" title="${book.description}">
-                          ${ book.description }
-                        </p>
-                    </div>
-                </div>
-            </div>`;
-    }
-
-    $(document).ready(function() {
-        $('#genre-select').select2({
-            placeholder: "Выберите кластеры",
-            allowClear: true,
-            width: '100%'
-        });
-        $('#fandom-select').select2({
-            placeholder: "Выберите кластеры",
-            allowClear: true,
-            width: '100%'
-        });
-        $('#tag-select').select2({
-            placeholder: "Выберите теги",
-            allowClear: true,
-            width: '100%'
-        });
-        $('#site-select').select2({
-            placeholder: "Выберите сайты",
-            allowClear: true,
-            width: '100%'
-        });
-        $('#exclude_genre').select2({
-            placeholder: "Уберите кластеры",
-            allowClear: true,
-            width: '100%'
-        });
-        $('#exclude_tag').select2({
-            placeholder: "Уберите теги",
-            allowClear: true,
-            width: '100%'
-        });
-        $('#exclude_fandom').select2({
-            placeholder: "Уберите теги",
-            allowClear: true,
-            width: '100%'
-        });
-    });
-</script>
 </body>
 </html>
