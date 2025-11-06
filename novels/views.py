@@ -1,112 +1,63 @@
 # views.py
 from django.shortcuts import render
 from django.http import JsonResponse
-from django.core.paginator import Paginator  # используем только для удобства total_pages, но считаем count SQL-ом
 from django.db import connections
-from django.utils.timezone import now
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.timezone import localtime
+import json
+from novels.utils.pg_utils import create_book_action, get_books_action_stats
+from novels.utils.db_utils import SELECT_BOOKS, SELECT_TAGS, SELECT_GENRES, SELECT_FANDOMS
 
 PAGE_SIZE = 100
+
 
 def _fetchall_dict(cur):
     cols = [c[0] for c in cur.description]
     return [dict(zip(cols, row)) for row in cur.fetchall()]
 
+
+def format_ts(ts):
+    """Форматирует timestamp в читаемый вид"""
+    return localtime(ts).strftime("%Y-%m-%d %H:%M") if ts else None
+
+
 def filter_books(request):
     # --- входные параметры ---
-    tags            = request.GET.getlist("tag")
-    min_chapters    = request.GET.get("min_chapters")
-    max_chapters    = request.GET.get("max_chapters")
-    min_rating      = request.GET.get("min_rating")
-    max_rating      = request.GET.get("max_rating")
-    sort_by         = request.GET.get("sort_by", "")
-    sort_dir        = request.GET.get("sort_dir", "desc")
-    page            = int(request.GET.get("page", 1))
-    exclude_tags    = request.GET.getlist("exclude_tag")
-    exclude_clusters= request.GET.getlist("exclude_cluster")
-    site           = request.GET.getlist("site")
-    title_query     = request.GET.get("title", "")
-    created_from    = request.GET.get("created_from")
-    created_to      = request.GET.get("created_to")
-    updated_from    = request.GET.get("updated_from")
-    updated_to      = request.GET.get("updated_to")
-    #is_chinese      = request.GET.get("is_chinese")  # "yes"/"no"/None
+    tags = request.GET.getlist("tag")
+    min_chapters = request.GET.get("min_chapters")
+    max_chapters = request.GET.get("max_chapters")
+    min_rating = request.GET.get("min_rating")
+    max_rating = request.GET.get("max_rating")
+    sort_by = request.GET.get("sort_by", "")
+    sort_dir = request.GET.get("sort_dir", "desc")
+    page = int(request.GET.get("page", 1))
+    exclude_tags = request.GET.getlist("exclude_tag")
+    exclude_clusters = request.GET.getlist("exclude_cluster")
+    site = request.GET.getlist("site")
+    title_query = request.GET.get("title", "")
+    created_from = request.GET.get("created_from")
+    created_to = request.GET.get("created_to")
+    updated_from = request.GET.get("updated_from")
+    updated_to = request.GET.get("updated_to")
 
-    # --- маппинг сортировки (белый список) ---
+    # --- маппинг сортировки ---
     sort_map = {
-        "chapters":        "b.free_chapters",
-        "bookName":        'b."name"',
-        "score":           "b.score",
-        "weighted_score":  "weighted_score",
-        "created_at":      "b.created_at",
-        "updated_at":      "b.updated_at",
+        "chapters": "b.free_chapters",
+        "bookName": 'b."name"',
+        "score": "b.score",
+        "weighted_score": "weighted_score",
+        "created_at": "b.created_at",
+        "updated_at": "b.updated_at",
         "freshness_score": "freshness_score",
     }
-    order_sql = sort_map.get(sort_by, "freshness_score")  # по умолчанию свежесть
+    order_sql = sort_map.get(sort_by, "freshness_score")
     order_dir = "DESC" if sort_dir.lower() == "desc" else "ASC"
 
-    base_select = """
-        select 
-            b.original_id book_id,
-            b."name" book_name,
-            b.site,
-            b.description,
-            b.author author_name,
-            b.url url,
-            b.picture_url,
-            b.free_chapters free,
-            b.score,
-            b.chapters,
-            b.created_at,
-            b.updated_at,
-            (b.score * (CASE WHEN (b.free_chapters + 1) > 0
-                             THEN LN((b.free_chapters + 1)) / LN(2)
-                             ELSE 0 END)
-            )::float AS weighted_score,
-            (EXTRACT(EPOCH FROM (NOW() - b.created_at)) / 86400.0)::float AS age_days,
-            (EXTRACT(EPOCH FROM (NOW() - b.updated_at)) / 86400.0)::float AS updated_days,
-            (
-              ( (b.score * (CASE WHEN (b.free_chapters + 1) > 0
-                                  THEN LN((b.free_chapters + 1)) / LN(2)
-                                  ELSE 0 END)
-                 )
-                / ( (EXTRACT(EPOCH FROM (NOW() - b.created_at)) / 86400.0) + 1 )
-              ) * 1.5
-              + 1.0 / ( (EXTRACT(EPOCH FROM (NOW() - b.updated_at)) / 86400.0) + 1 )
-            )::float AS freshness_score,
-            bt.tags,
-            bt.genres,
-            bt.fandoms
-        from 
-            nrml.books_v2 b
-        left join (
-        	select
-        		ta.site,
-        		ta.bookid,
-                jsonb_agg(ta.name) filter (where ta.type in ('Теги', 'tag')) tags,
-                jsonb_agg(ta.name) filter (where ta.type in ('Жанры')) genres,
-                jsonb_agg(ta.name) filter (where ta.type in ('Фэндомы')) fandoms
-        	from 
-        		nrml.tags_association ta
-        	join nrml.tags t on t.site = ta.site and t.name = ta.name and t.type = ta.type
-            group by 1, 2
-        ) bt on (
-            bt.site = b.site 
-            or bt.site = 'www.novels.com'
-            ) and bt.bookid = b.original_id::text
-    """
-    print(site)
-    # --- динамические фильтры ---
+    base_select = SELECT_BOOKS
     where_clauses = []
     params = []
 
-    # is_chinese
-    #if is_chinese == "yes":
-    #     where_clauses.append("b.is_chinese = TRUE")
-    #elif is_chinese == "no":
-    #    where_clauses.append("b.is_chinese = FALSE")
-
-    # exclude_tags: NOT EXISTS на каждый тег (iexact)
-    tags = request.GET.getlist("tag")
+    # --- динамические фильтры ---
     if tags:
         ph = ", ".join(["%s"] * len(tags))
         where_clauses.append(f"""
@@ -118,7 +69,6 @@ def filter_books(request):
         """)
         params.extend(tags)
 
-    exclude_tags = request.GET.getlist("exclude_tag")
     if exclude_tags:
         ph = ", ".join(["%s"] * len(exclude_tags))
         where_clauses.append(f"""
@@ -215,9 +165,9 @@ def filter_books(request):
         params.append(updated_to)
 
     where_sql = (" WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
+
     # --- COUNT(*) для пагинации ---
     count_sql = f"SELECT COUNT(*) FROM ({base_select}{where_sql}) AS q"
-    # --- выборка страницы ---
     offset = (page - 1) * PAGE_SIZE
     data_sql = f"""
         {base_select}
@@ -226,67 +176,35 @@ def filter_books(request):
         LIMIT %s OFFSET %s
     """
 
-    # --- запросы ---
     with connections["pgsql"].cursor() as cur:
-        # total count
         cur.execute(count_sql, params)
         total_count = cur.fetchone()[0]
         total_pages = max(1, (total_count + PAGE_SIZE - 1) // PAGE_SIZE)
 
-        # page data
         cur.execute(data_sql, params + [PAGE_SIZE, offset])
         rows = _fetchall_dict(cur)
 
-        # теги (с количеством книг, по убыванию)
-        cur.execute("""
-            SELECT 
-                e->>'value'					name,
-                count(distinct bt.bookid)	book_count
-            FROM nrml.book_tags bt
-            CROSS JOIN LATERAL jsonb_array_elements(bt.attr) AS e
-            WHERE e ? 'value' and e->>'type' in ('Теги', 'tag')
-            group by 1
-            order by 2 desc
-        """)
+        cur.execute(SELECT_TAGS)
         tags_stat = _fetchall_dict(cur)
 
-        cur.execute("""
-            select 
-                url name
-            from 
-                sites s 
-        """)
+        cur.execute("SELECT url name FROM sites s")
         sites_stats = _fetchall_dict(cur)
 
-        # теги (с количеством книг, по убыванию)
-        cur.execute("""
-            SELECT 
-                e->>'value'					name,
-                count(distinct bt.bookid)	book_count
-            FROM nrml.book_tags bt
-            CROSS JOIN LATERAL jsonb_array_elements(bt.attr) AS e
-            WHERE e ? 'value' and e->>'type' in ('Жанры')
-            group by 1
-            order by 2 desc
-        """)
+        cur.execute(SELECT_GENRES)
         genres_stat = _fetchall_dict(cur)
 
-        # теги (с количеством книг, по убыванию)
-        cur.execute("""
-            SELECT 
-                e->>'value'					name,
-                count(distinct bt.bookid)	book_count
-            FROM nrml.book_tags bt
-            CROSS JOIN LATERAL jsonb_array_elements(bt.attr) AS e
-            WHERE e ? 'value' and e->>'type' in ('Фэндомы')
-            group by 1
-            order by 2 desc
-        """)
+        cur.execute(SELECT_FANDOMS)
         fandoms_stat = _fetchall_dict(cur)
 
-    # --- подготовка JSON данных для фронта ---
+    print('Filtering books 0')
+    # --- добавляем статистику по действиям ---
+    book_ids = [r["book_id"] for r in rows]
+    actions_stats = get_books_action_stats(book_ids)
+
+    print('Filtering books 1')
     books_data = []
     for r in rows:
+        stats = actions_stats.get(str(r["book_id"]), {})
         books_data.append({
             "bookId": r["book_id"],
             "bookName": r["book_name"],
@@ -302,23 +220,39 @@ def filter_books(request):
             "genres": r.get("genres", []) or [],
             "fandoms": r.get("fandoms", []) or [],
             "clusterLabel": r.get("cluster_labels", []) or [],
-            # при желании можно отдать и вычисляемые поля
             "weighted_score": r.get("weighted_score"),
             "freshness_score": r.get("freshness_score"),
+            "last_view": format_ts(stats.get("view")),
+            "last_click": format_ts(stats.get("click")),
         })
 
+    print('Filtering books 2')
     # --- AJAX ответ ---
     if request.headers.get("x-requested-with") == "XMLHttpRequest":
         return JsonResponse({"books": books_data, "total_pages": total_pages}, safe=False)
 
-    # --- Рендер страницы ---
-    # Преобразуем статистику тегов/кластеров в удобный формат для шаблона
     return render(request, "novels/index.html", {
-        "books": books_data,                 # вместо page_obj — список словарей
-        "tags": tags_stat,                   # [{name, book_count}, ...]
-        "genres": genres_stat,                   # [{name, book_count}, ...]
-        "fandoms": fandoms_stat,                   # [{name, book_count}, ...]
-        "sites": sites_stats,                   # [{name, book_count}, ...]
+        "books": books_data,
+        "tags": tags_stat,
+        "genres": genres_stat,
+        "fandoms": fandoms_stat,
+        "sites": sites_stats,
         "page_number": page,
         "total_pages": total_pages,
     })
+
+
+@csrf_exempt
+def api_book_view_batch(request):
+    data = json.loads(request.body or "{}")
+    print("📘 VIEW_BATCH:", data)
+    for book_id in data.get("book_ids", []):
+        create_book_action(book_id, "view")
+    return JsonResponse({"status": "ok", "count": len(data.get("book_ids", []))})
+
+
+@csrf_exempt
+def api_book_click(request, book_id):
+    print("🖱️ CLICK:", book_id)
+    create_book_action(book_id, "click")
+    return JsonResponse({"status": "ok", "book_id": book_id})
